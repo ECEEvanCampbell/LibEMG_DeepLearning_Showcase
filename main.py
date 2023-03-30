@@ -22,11 +22,11 @@ def main():
     # split the dataset into a train, validation, and test set
     # this dataset has a "sets" metadata flag, so lets split 
     # train/test using that.
-    not_test_data = odh.isolate_data("sets",[0])
-    test_data = odh.isolate_data("sets",[1])
+    not_test_data = odh.isolate_data("sets",[0,1,2,3,4])
+    test_data = odh.isolate_data("sets",[5])
     # lets further split up training and validation based on reps
-    train_data = not_test_data.isolate_data("reps",[0,1,2,3])
-    valid_data = not_test_data.isolate_data("reps",[4])
+    train_data = not_test_data.isolate_data("sets",[0,1,2,3])
+    valid_data = not_test_data.isolate_data("sets",[4])
 
     # let's perform the filtering on the dataset too (neural networks like
     # inputs that are standardized).
@@ -55,7 +55,7 @@ def main():
     dataloader_dictionary = {"training_dataloader": train_dataloader,
                              "validation_dataloader": valid_dataloader}
     # We need to tell the libEMG EMGClassifier that we are using a custom model
-    model = CNN(n_output   = np.unique(odh.classes).shape[0],
+    model = CNN(n_output   = np.unique(np.vstack(odh.classes[:])).shape[0],
                 n_channels = train_windows.shape[1],
                 n_samples  = train_windows.shape[2],
                 n_filters  = 64)
@@ -72,10 +72,10 @@ def main():
     classifier = EMGClassifier()
     classifier.fit(model, dataloader_dictionary=dataloader_dictionary, parameters=dl_dictionary)
     # get the classifier's predictions on the test set
-    preds = classifier.run(test_windows, test_metadata["classes"])
+    preds = classifier.run(test_windows)
     om = OfflineMetrics()
     metrics = ['CA','AER','INS','REJ_RATE','CONF_MAT','RECALL','PREC','F1']
-    results = om.extract_offline_metrics(metrics, test_metadata['classes'], preds)
+    results = om.extract_offline_metrics(metrics, test_metadata['classes'], preds[0], null_label=2)
     for key in results:
         print(f"{key}: {results[key]}")
 
@@ -88,21 +88,24 @@ def main():
     feature_dictionary = {}
     feature_dictionary["training_windows"] = train_windows
     feature_dictionary["train_labels"]     = train_metadata["classes"]
-    classifier = EMGClassifier(rejection_threshold=0.90, majority_vote=3, velocity=True)
+    classifier = EMGClassifier()
+    classifier.add_majority_vote(3)
+    classifier.add_rejection(0.9)
+    classifier.add_velocity(train_windows, train_metadata["classes"])
     dl_dictionary = {"learning_rate": 1e-4,
                      "num_epochs": 50,
                      "verbose": False}
     # reset the model weights
-    model = CNN(n_output   = np.unique(odh.classes).shape[0],
+    model = CNN(n_output   = np.unique(np.vstack(odh.classes[:])).shape[0],
                 n_channels = train_windows.shape[1],
                 n_samples  = train_windows.shape[2],
                 n_filters  = 64)
     classifier.fit(model, feature_dictionary=feature_dictionary, dataloader_dictionary=dataloader_dictionary, parameters=dl_dictionary)
      # get the classifier's predictions on the test set
-    preds = classifier.run(test_windows, test_metadata["classes"])
+    preds = classifier.run(test_windows)
     om = OfflineMetrics()
     metrics = ['CA','AER','INS','REJ_RATE','CONF_MAT','RECALL','PREC','F1']
-    results = om.extract_offline_metrics(metrics, test_metadata['classes'], preds, null_label=2)
+    results = om.extract_offline_metrics(metrics, test_metadata['classes'], preds[0], null_label=2)
     for key in results:
         print(f"{key}: {results[key]}")
 
